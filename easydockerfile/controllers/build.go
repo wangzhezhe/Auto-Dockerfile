@@ -2,12 +2,14 @@ package controllers
 
 import (
 	"archive/tar"
+	"bufio"
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"github.com/astaxie/beego"
+	//"github.com/astaxie/beego/context"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -94,6 +96,58 @@ func SourceTar(filename string) *os.File {
 
 }
 
+//递归删除文件夹
+func Cleandir(dirname string) {
+
+	//打开文件夹
+	dirhandle, err := os.Open(dirname)
+	//fmt.Println(dirname)
+	//fmt.Println(reflect.TypeOf(dir))
+	if err != nil {
+		panic(nil)
+	}
+	defer dirhandle.Close()
+
+	//fis, err := ioutil.ReadDir(dir)
+	fis, err := dirhandle.Readdir(0)
+	//fis的类型为 []os.FileInfo
+	//fmt.Println(reflect.TypeOf(fis))
+	if err != nil {
+		panic(err)
+	}
+
+	//遍历文件列表 每一个文件到要写入一个新的*tar.Header
+	//var fi os.FileInfo
+	for _, fi := range fis {
+		if fi.IsDir() {
+			newname := dirname + "/" + fi.Name()
+			//fmt.Println("using dir")
+			//fmt.Println(newname)
+			//这个样直接continue就将所有文件写入到了一起 没有层级结构了
+			//Filecompress(tw, dir, fi)
+			Cleandir(newname)
+
+		} else {
+			//如果是普通文件 直接写入 dir 后面已经有了 /
+			filename := dirname + "/" + fi.Name()
+			fmt.Println(filename)
+			err := os.Remove(filename)
+			if err != nil {
+				panic(err)
+			}
+			fmt.Println("delete " + filename)
+		}
+
+	}
+	//递归结束 删除当前文件夹
+	err = os.Remove(dirname)
+	fmt.Println("delete " + dirname)
+	if err != nil {
+		panic(err)
+	}
+
+}
+
 func Tartoimage(imagename string, uploadtar string) *http.Response {
 
 	//tarStream := SourceTar(uploadtar)
@@ -124,17 +178,23 @@ func Tartoimage(imagename string, uploadtar string) *http.Response {
 	json.NewEncoder(&buf).Encode(auth)
 	reqest.Header.Set("X-Registry-Config", base64.URLEncoding.EncodeToString(buf.Bytes()))
 	response, _ := client.Do(reqest)
+	//for{
+	//	select{
+	//		case <-response.Body:
 
-	stdout := os.Stdout
-	_, err = io.Copy(stdout, response.Body)
-
+	//	}
+	//}
+	//the io copy could only be rederect once
+	//stdout := os.Stdout
+	//_, err = io.Copy(stdout, response.Body)
+	//response.(http.Flusher).Flush()
 	return response
 
 }
 
 var count = 0
 
-func getname() string {
+func Getname() string {
 	count++
 	num := count % 100
 	dirname := "temp_test" + strconv.Itoa(num)
@@ -144,6 +204,31 @@ func getname() string {
 // Operations about object
 type BuildController struct {
 	beego.Controller
+}
+
+func writeCmdOutput(res http.ResponseWriter, pipeReader *io.PipeReader) {
+	buffer := make([]byte, 20)
+	for {
+		n, err := pipeReader.Read(buffer)
+		if err != nil {
+			pipeReader.Close()
+			break
+		}
+
+		data := buffer[0:n]
+		fmt.Print(string(data))
+		res.Write(data)
+		res.(http.Flusher).Flush()
+		//fmt.Println("data write ok")
+		//if f, ok := res.(http.Flusher); ok {
+		//	f.Flush()
+		//}
+
+		//reset buffer
+		for i := 0; i < n; i++ {
+			buffer[i] = 0
+		}
+	}
 }
 
 // @Title testBuild
@@ -168,7 +253,7 @@ func (o *BuildController) Post() {
 		panic(err)
 	}
 	//create the dir name
-	dirname := getname()
+	dirname := Getname()
 	err = os.Mkdir(dirname, 0777)
 	if err != nil {
 		panic(err)
@@ -186,13 +271,37 @@ func (o *BuildController) Post() {
 
 	////send the seployments.tar.gz file to the docker deamon
 	docker_response := Tartoimage(dirname, dirname+"/"+"deployments.tar.gz")
+	fmt.Println(docker_response.StatusCode)
+	res := o.Ctx.ResponseWriter
+	pipeReader, pipeWriter := io.Pipe()
+	read := bufio.NewReader(docker_response.Body)
 
-	//_, err = io.Copy(os.Stdout, docker_response.Body)
-	//question here?????
-	_, err = io.Copy(o.Ctx.ResponseWriter, docker_response.Body)
-	//redirect the os.Stdout to the response
-	//returnbody, _ := ioutil.ReadAll(docker_response.Body)
-	o.Ctx.ResponseWriter.Write([]byte("using responsewriter\n"))
-	o.Ctx.Output.Body([]byte("using output\n"))
+	go func() {
+		io.Copy(pipeWriter, read)
+		defer pipeWriter.Close()
+	}()
+
+	fmt.Println("the output type:", reflect.TypeOf(o.Ctx.Output))
+	//pipeReader = res
+	writeCmdOutput(res, pipeReader)
+
+	//io.Copy(res, docker_response.Body)
+	//if f, ok := res.(http.Flusher); ok {
+	//	f.Flush()
+	//}
+
+	//writerflush := NewWriteFlusher(o.Ctx.ResponseWriter)
+
+	//pipeReader, pipeWriter := io.Pipe()
+
+	//o.Ctx.ResponseWriter
+	//_, _ = os.OpenFile("templog.txt", os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0755)
+	//	os.Stdout = docker_response.Body
+
+	//io.Copy(o.Ctx.ResponseWriter, docker_response.Body)
+	//o.Ctx.ResponseWriter.(http.Flusher).Flush()
+
+	//delete the folder and the file
+	defer Cleandir(dirname)
 
 }
