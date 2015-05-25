@@ -82,7 +82,6 @@ func Dirtotar(sourcedir string, tardir string) {
 	//dockerfile要单独放在根目录下 和其他archivefile并列
 	//tardir and fileinfo decide the position of file which compress into the tar
 	Filecompress(tw, tardir, fileinfo)
-
 	fmt.Println("tar.gz packaging OK")
 
 }
@@ -150,10 +149,6 @@ func Cleandir(dirname string) {
 
 func Tartoimage(imagename string, uploadtar string) *http.Response {
 
-	//tarStream := SourceTar(uploadtar)
-	//defer tarStream.Close()
-	//fmt.Println(tarStream)
-
 	//dockerhub的认证信息
 	auth := AuthConfiguration{
 	//	Username:      "wangzhe",
@@ -178,16 +173,6 @@ func Tartoimage(imagename string, uploadtar string) *http.Response {
 	json.NewEncoder(&buf).Encode(auth)
 	reqest.Header.Set("X-Registry-Config", base64.URLEncoding.EncodeToString(buf.Bytes()))
 	response, _ := client.Do(reqest)
-	//for{
-	//	select{
-	//		case <-response.Body:
-
-	//	}
-	//}
-	//the io copy could only be rederect once
-	//stdout := os.Stdout
-	//_, err = io.Copy(stdout, response.Body)
-	//response.(http.Flusher).Flush()
 	return response
 
 }
@@ -207,6 +192,7 @@ type BuildController struct {
 }
 
 func writeCmdOutput(res http.ResponseWriter, pipeReader *io.PipeReader) {
+
 	buffer := make([]byte, 20)
 	for {
 		n, err := pipeReader.Read(buffer)
@@ -218,11 +204,8 @@ func writeCmdOutput(res http.ResponseWriter, pipeReader *io.PipeReader) {
 		data := buffer[0:n]
 		fmt.Print(string(data))
 		res.Write(data)
+		//attention : add the Flush method in beego/router.go
 		res.(http.Flusher).Flush()
-		//fmt.Println("data write ok")
-		//if f, ok := res.(http.Flusher); ok {
-		//	f.Flush()
-		//}
 
 		//reset buffer
 		for i := 0; i < n; i++ {
@@ -238,11 +221,7 @@ func writeCmdOutput(res http.ResponseWriter, pipeReader *io.PipeReader) {
 // @Failure 403 body is empty
 // @router / [post]
 func (o *BuildController) Post() {
-	//var ob models.Object
-	//json.Unmarshal(o.Ctx.Input.RequestBody, &ob)
-	//objectid := models.AddOne(ob)
-	//o.Data["json"] = map[string]string{"ObjectId": objectid}
-	//o.ServeJson()
+
 	fmt.Println("test post")
 	req := o.Ctx.Request
 	fmt.Println(reflect.TypeOf(req.Body))
@@ -266,18 +245,30 @@ func (o *BuildController) Post() {
 	req.Body.Close()
 	f.Close()
 
-	////package the dir and send it to the docker deamon
+	///package the dir and send it to the docker deamon
 	Dirtotar(dirname, dirname)
 
-	////send the seployments.tar.gz file to the docker deamon
+	//send the seployments.tar.gz file to the docker deamon
 	docker_response := Tartoimage(dirname, dirname+"/"+"deployments.tar.gz")
 	fmt.Println(docker_response.StatusCode)
 	res := o.Ctx.ResponseWriter
+	//write contents into the pipeWriter and read the contends from the pipReader
 	pipeReader, pipeWriter := io.Pipe()
 	read := bufio.NewReader(docker_response.Body)
 
 	go func() {
-		io.Copy(pipeWriter, read)
+		for {
+			line, _, err := read.ReadLine()
+			if err == io.EOF {
+				break
+			}
+			// the byte number of \n is 10
+			// the type of line is a slice
+			line = append(line, 10)
+			fmt.Print(string(line))
+			pipeWriter.Write(line)
+		}
+		//io.Copy(pipeWriter, read)
 		defer pipeWriter.Close()
 	}()
 
@@ -285,23 +276,6 @@ func (o *BuildController) Post() {
 	//pipeReader = res
 	writeCmdOutput(res, pipeReader)
 
-	//io.Copy(res, docker_response.Body)
-	//if f, ok := res.(http.Flusher); ok {
-	//	f.Flush()
-	//}
-
-	//writerflush := NewWriteFlusher(o.Ctx.ResponseWriter)
-
-	//pipeReader, pipeWriter := io.Pipe()
-
-	//o.Ctx.ResponseWriter
-	//_, _ = os.OpenFile("templog.txt", os.O_WRONLY|os.O_CREATE|os.O_SYNC, 0755)
-	//	os.Stdout = docker_response.Body
-
-	//io.Copy(o.Ctx.ResponseWriter, docker_response.Body)
-	//o.Ctx.ResponseWriter.(http.Flusher).Flush()
-
-	//delete the folder and the file
 	defer Cleandir(dirname)
 
 }
