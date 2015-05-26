@@ -192,7 +192,7 @@ type BuildController struct {
 	beego.Controller
 }
 
-func writeCmdOutput(res http.ResponseWriter, pipeReader *io.PipeReader) {
+func writeCmdOutput(ws *websocket.Conn,res http.ResponseWriter, pipeReader *io.PipeReader) {
 
 	buffer := make([]byte, 20)
 	for {
@@ -206,8 +206,9 @@ func writeCmdOutput(res http.ResponseWriter, pipeReader *io.PipeReader) {
 		fmt.Print(string(data))
 		res.Write(data)
 		//attention : add the Flush method in beego/router.go
-		res.(http.Flusher).Flush()
-
+		//res.(http.Flusher).Flush()
+        ws.WriteMessage(websocket.TextMessage, data)
+		
 		//reset buffer
 		for i := 0; i < n; i++ {
 			buffer[i] = 0
@@ -221,9 +222,9 @@ func writeCmdOutput(res http.ResponseWriter, pipeReader *io.PipeReader) {
 // @Param	body		body 	models.User	true		"body for user content"
 // @Success 200 {int} models.User.Id
 // @Failure 403 body is empty
-// @router / [get]
-func (o *BuildController) Get() {
-	   fmt.Println("test get")
+// @router / [post]
+func (o *BuildController) Post() {
+	   fmt.Println("test post")
 	   o.TplNames="test.html"
 	}
 
@@ -232,42 +233,41 @@ func (o *BuildController) Get() {
 // @Param	body		body 	models.User	true		"body for user content"
 // @Success 200 {int} models.User.Id
 // @Failure 403 body is empty
-// @router / [post]
-func (o *BuildController) Post() {
+// @router / [get]
+func (o *BuildController) Get() {
 
-	fmt.Println("test post")
-	req := o.Ctx.Request
-	//fmt.Println(reflect.TypeOf(req.Body))
-
-
-	//the type of body is []byte
-//	body, err := ioutil.ReadAll(req.Form.Get())
-    body := req.Form.Get("code")
-	//fmt.Println(o.GetString("code"))
-	fmt.Println(string(body))
-//	if err != nil {
-//		panic(err)
-//	}
-	//create the dir name
+	ws, err := websocket.Upgrade(o.Ctx.ResponseWriter, o.Ctx.Request, nil, 1024, 1024)
+	if _, ok := err.(websocket.HandshakeError); ok {
+		http.Error(o.Ctx.ResponseWriter, "Not a websocket handshake", 400)
+		return
+	} else if err != nil {
+		beego.Error("Cannot setup WebSocket connection:", err)
+		return
+	}
+	
 	dirname := Getname()
-	err := os.Mkdir(dirname, 0777)
+	err = os.Mkdir(dirname, 0777)
 	if err != nil {
 		panic(err)
 	}
-	//the file is puted in the root dir
-	f, err := os.Create(dirname + "/" + "Dockerfile")
+    //the file is puted in the root dir
+	
+
+	for {
+
+		_, body, err := ws.ReadMessage()
+		if err != nil {
+			return
+		}
+	println(string(body))
+    f, err := os.Create(dirname + "/" + "Dockerfile")
 	f.Write([]byte(body))
-	// defer is excuted as the form of stack
-	//defer os.Remove("Dockerfile")
-	req.Body.Close()
 	f.Close()
-
-	///package the dir and send it to the docker deamon
-	Dirtotar(dirname, dirname)
-
+	Dirtotar(dirname, dirname)	
 	//send the seployments.tar.gz file to the docker deamon
 	docker_response := Tartoimage(dirname, dirname+"/"+"deployments.tar.gz")
-	//fmt.Println(docker_response.StatusCode)
+	
+		//fmt.Println(docker_response.StatusCode)
 	res := o.Ctx.ResponseWriter
 	//write contents into the pipeWriter and read the contends from the pipReader
 	pipeReader, pipeWriter := io.Pipe()
@@ -291,8 +291,11 @@ func (o *BuildController) Post() {
 
 	fmt.Println("the output type:", reflect.TypeOf(o.Ctx.Output))
 	//pipeReader = res
-	writeCmdOutput(res, pipeReader)
+	writeCmdOutput(ws,res, pipeReader)
 
-//	defer Cleandir(dirname)
-
+   	defer Cleandir(dirname)
+	
+	
+    }
+	
 }
