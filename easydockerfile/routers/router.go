@@ -8,7 +8,7 @@
 package routers
 
 import (
-	"Easy-Dockerfile/easydockerfile/controllers"
+	"github.com/wangzhezhe/Easy-Dockerfile/easydockerfile/controllers"
 
 	"github.com/astaxie/beego"
 )
@@ -32,4 +32,6 @@ func init() {
 		),
 	)
 	beego.AddNamespace(ns)
+	beego.SetStaticPath("/static","public")
+	beego.SetStaticPath("/js","static/js")
 }

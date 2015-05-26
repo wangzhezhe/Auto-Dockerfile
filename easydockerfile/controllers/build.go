@@ -17,6 +17,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"github.com/gorilla/websocket"
 )
 
 func Filecompress(tw *tar.Writer, dir string, fi os.FileInfo) {
@@ -158,7 +159,7 @@ func Tartoimage(imagename string, uploadtar string) *http.Response {
 	}
 
 	client := &http.Client{}
-	url := "http://10.211.55.5:2375/build?dockerfile=" + imagename + "/Dockerfile&q=true&t=" + imagename
+	url := "http://0.0.0.0:2376/build?dockerfile=" + imagename + "/Dockerfile&q=true&t=" + imagename
 	body, err := ioutil.ReadFile(imagename + "/deployments.tar.gz")
 	if err != nil {
 		panic(err)
@@ -214,6 +215,18 @@ func writeCmdOutput(res http.ResponseWriter, pipeReader *io.PipeReader) {
 	}
 }
 
+
+// @Title testBuild
+// @Description : input json file output the stream
+// @Param	body		body 	models.User	true		"body for user content"
+// @Success 200 {int} models.User.Id
+// @Failure 403 body is empty
+// @router / [get]
+func (o *BuildController) Get() {
+	   fmt.Println("test get")
+	   o.TplNames="test.html"
+	}
+
 // @Title testBuild
 // @Description : input json file output the stream
 // @Param	body		body 	models.User	true		"body for user content"
@@ -224,22 +237,26 @@ func (o *BuildController) Post() {
 
 	fmt.Println("test post")
 	req := o.Ctx.Request
-	fmt.Println(reflect.TypeOf(req.Body))
+	//fmt.Println(reflect.TypeOf(req.Body))
+
 
 	//the type of body is []byte
-	body, err := ioutil.ReadAll(req.Body)
-	if err != nil {
-		panic(err)
-	}
+//	body, err := ioutil.ReadAll(req.Form.Get())
+    body := req.Form.Get("code")
+	//fmt.Println(o.GetString("code"))
+	fmt.Println(string(body))
+//	if err != nil {
+//		panic(err)
+//	}
 	//create the dir name
 	dirname := Getname()
-	err = os.Mkdir(dirname, 0777)
+	err := os.Mkdir(dirname, 0777)
 	if err != nil {
 		panic(err)
 	}
 	//the file is puted in the root dir
 	f, err := os.Create(dirname + "/" + "Dockerfile")
-	f.Write(body)
+	f.Write([]byte(body))
 	// defer is excuted as the form of stack
 	//defer os.Remove("Dockerfile")
 	req.Body.Close()
@@ -250,7 +267,7 @@ func (o *BuildController) Post() {
 
 	//send the seployments.tar.gz file to the docker deamon
 	docker_response := Tartoimage(dirname, dirname+"/"+"deployments.tar.gz")
-	fmt.Println(docker_response.StatusCode)
+	//fmt.Println(docker_response.StatusCode)
 	res := o.Ctx.ResponseWriter
 	//write contents into the pipeWriter and read the contends from the pipReader
 	pipeReader, pipeWriter := io.Pipe()
@@ -276,6 +293,6 @@ func (o *BuildController) Post() {
 	//pipeReader = res
 	writeCmdOutput(res, pipeReader)
 
-	defer Cleandir(dirname)
+//	defer Cleandir(dirname)
 
 }

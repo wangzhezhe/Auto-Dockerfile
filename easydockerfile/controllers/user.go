@@ -1,7 +1,7 @@
 package controllers
 
 import (
-	"Easy-Dockerfile/easydockerfile/models"
+	"github.com/wangzhezhe/Easy-Dockerfile/easydockerfile/models"
 	"encoding/json"
 
 	"github.com/astaxie/beego"

@@ -1,8 +1,8 @@
 package main
 
 import (
-	_ "Easy-Dockerfile/easydockerfile/docs"
-	_ "Easy-Dockerfile/easydockerfile/routers"
+	_ "github.com/wangzhezhe/Easy-Dockerfile/easydockerfile/docs"
+	_ "github.com/wangzhezhe/Easy-Dockerfile/easydockerfile/routers"
 
 	"github.com/astaxie/beego"
 )
