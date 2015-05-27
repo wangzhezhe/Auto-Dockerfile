@@ -207,7 +207,13 @@ func writeCmdOutput(ws *websocket.Conn,res http.ResponseWriter, pipeReader *io.P
 		res.Write(data)
 		//attention : add the Flush method in beego/router.go
 		//res.(http.Flusher).Flush()
-        ws.WriteMessage(websocket.TextMessage, data)
+		for{
+			err:=ws.WriteMessage(websocket.TextMessage, data)
+			if err==nil{
+				break
+			}
+		}
+
 		
 		//reset buffer
 		for i := 0; i < n; i++ {
@@ -281,9 +287,16 @@ func (o *BuildController) Get() {
 			}
 			// the byte number of \n is 10
 			// the type of line is a slice
-			line = append(line, 10)
+			
+			var json_data map[string]string
+			if err :=json.Unmarshal(line,&json_data); err!=nil{
+				panic(err)
+			}
+			info :=json_data["stream"]
+			info= "<br>"+info+"<br/>"
+			
 			fmt.Print(string(line))
-			pipeWriter.Write(line)
+			pipeWriter.Write([]byte(info))
 		}
 		//io.Copy(pipeWriter, read)
 		defer pipeWriter.Close()
