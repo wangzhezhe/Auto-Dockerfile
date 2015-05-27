@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/astaxie/beego"
 	//"github.com/astaxie/beego/context"
+	"github.com/gorilla/websocket"
 	"io"
 	"io/ioutil"
 	"net/http"
@@ -17,7 +18,6 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
-	"github.com/gorilla/websocket"
 )
 
 func Filecompress(tw *tar.Writer, dir string, fi os.FileInfo) {
@@ -192,7 +192,7 @@ type BuildController struct {
 	beego.Controller
 }
 
-func writeCmdOutput(ws *websocket.Conn,res http.ResponseWriter, pipeReader *io.PipeReader) {
+func writeCmdOutput(ws *websocket.Conn, res http.ResponseWriter, pipeReader *io.PipeReader) {
 
 	buffer := make([]byte, 20)
 	for {
@@ -207,14 +207,13 @@ func writeCmdOutput(ws *websocket.Conn,res http.ResponseWriter, pipeReader *io.P
 		res.Write(data)
 		//attention : add the Flush method in beego/router.go
 		//res.(http.Flusher).Flush()
-		for{
-			err:=ws.WriteMessage(websocket.TextMessage, data)
-			if err==nil{
+		for {
+			err := ws.WriteMessage(websocket.TextMessage, data)
+			if err == nil {
 				break
 			}
 		}
 
-		
 		//reset buffer
 		for i := 0; i < n; i++ {
 			buffer[i] = 0
@@ -222,27 +221,18 @@ func writeCmdOutput(ws *websocket.Conn,res http.ResponseWriter, pipeReader *io.P
 	}
 }
 
+var ws *websocket.Conn
 
 // @Title testBuild
-// @Description : input json file output the stream
-// @Param	body		body 	models.User	true		"body for user content"
-// @Success 200 {int} models.User.Id
-// @Failure 403 body is empty
-// @router / [post]
-func (o *BuildController) Post() {
-	   fmt.Println("test post")
-	   o.TplNames="test.html"
-	}
-
-// @Title testBuild
-// @Description : input json file output the stream
+// @Description : start the websocket connection
 // @Param	body		body 	models.User	true		"body for user content"
 // @Success 200 {int} models.User.Id
 // @Failure 403 body is empty
 // @router / [get]
 func (o *BuildController) Get() {
 
-	ws, err := websocket.Upgrade(o.Ctx.ResponseWriter, o.Ctx.Request, nil, 1024, 1024)
+	wsget, err := websocket.Upgrade(o.Ctx.ResponseWriter, o.Ctx.Request, nil, 1024, 1024)
+	ws = wsget
 	if _, ok := err.(websocket.HandshakeError); ok {
 		http.Error(o.Ctx.ResponseWriter, "Not a websocket handshake", 400)
 		return
@@ -250,30 +240,32 @@ func (o *BuildController) Get() {
 		beego.Error("Cannot setup WebSocket connection:", err)
 		return
 	}
-	
+}
+
+// @Title testBuild
+// @Description : get the message from the form and send the dockerfile to the deamon and get response
+// @Param	body		body 	models.User	true		"body for user content"
+// @Success 200 {int} models.User.Id
+// @Failure 403 body is empty
+// @router / [post]
+func (o *BuildController) Post() {
+	fmt.Println("test post")
 	dirname := Getname()
-	err = os.Mkdir(dirname, 0777)
+	err := os.Mkdir(dirname, 0777)
 	if err != nil {
 		panic(err)
 	}
-    //the file is puted in the root dir
-	
-
-	for {
-
-		_, body, err := ws.ReadMessage()
-		if err != nil {
-			return
-		}
-	println(string(body))
-    f, err := os.Create(dirname + "/" + "Dockerfile")
+	//get the info from the form
+	body := o.Ctx.Request.Form.Get("data")
+	f, err := os.Create(dirname + "/" + "Dockerfile")
 	f.Write([]byte(body))
 	f.Close()
-	Dirtotar(dirname, dirname)	
+
+	Dirtotar(dirname, dirname)
 	//send the seployments.tar.gz file to the docker deamon
 	docker_response := Tartoimage(dirname, dirname+"/"+"deployments.tar.gz")
-	
-		//fmt.Println(docker_response.StatusCode)
+
+	//fmt.Println(docker_response.StatusCode)
 	res := o.Ctx.ResponseWriter
 	//write contents into the pipeWriter and read the contends from the pipReader
 	pipeReader, pipeWriter := io.Pipe()
@@ -285,30 +277,28 @@ func (o *BuildController) Get() {
 			if err == io.EOF {
 				break
 			}
+
 			// the byte number of \n is 10
 			// the type of line is a slice
-			
+
 			var json_data map[string]string
-			if err :=json.Unmarshal(line,&json_data); err!=nil{
+			if err := json.Unmarshal(line, &json_data); err != nil {
 				panic(err)
 			}
-			info :=json_data["stream"]
-			info= "<br>"+info+"<br/>"
-			
+			info := json_data["stream"]
+			info = "<br>" + info + "<br/>"
+
 			fmt.Print(string(line))
 			pipeWriter.Write([]byte(info))
 		}
-		//io.Copy(pipeWriter, read)
+
 		defer pipeWriter.Close()
 	}()
 
 	fmt.Println("the output type:", reflect.TypeOf(o.Ctx.Output))
 	//pipeReader = res
-	writeCmdOutput(ws,res, pipeReader)
+	writeCmdOutput(ws, res, pipeReader)
 
-   	defer Cleandir(dirname)
-	
-	
-    }
-	
+	defer Cleandir(dirname)
+
 }

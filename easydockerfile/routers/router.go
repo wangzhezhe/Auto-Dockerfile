@@ -32,6 +32,7 @@ func init() {
 		),
 	)
 	beego.AddNamespace(ns)
-	beego.SetStaticPath("/static","public")
-	beego.SetStaticPath("/js","static/js")
+	beego.SetStaticPath("/static", "static")
+	beego.SetStaticPath("/views", "views")
+
 }
