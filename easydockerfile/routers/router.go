@@ -25,6 +25,11 @@ func init() {
 				&controllers.UserController{},
 			),
 		),
+		beego.NSNamespace("/page",
+			beego.NSInclude(
+				&controllers.PageController{},
+			),
+		),
 		beego.NSNamespace("/testbuild",
 			beego.NSInclude(
 				&controllers.BuildController{},
@@ -32,7 +37,8 @@ func init() {
 		),
 	)
 	beego.AddNamespace(ns)
-	beego.SetStaticPath("/static", "static")
-	beego.SetStaticPath("/views", "views")
+	//beego.Router("/", &controllers.PageController{})
+	//beego.SetStaticPath("/static", "static")
+	//beego.SetStaticPath("/views", "views")
 
 }
