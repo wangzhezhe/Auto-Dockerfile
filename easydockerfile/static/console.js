@@ -5,7 +5,7 @@ $(document).ready(function () {
     //socket = new WebSocket('ws://' + window.location.host + '/console/sync?tutname=' + $('#tutname').text());
     //socket = new WebSocket('ws://' + '127.0.0.1:8089' + '/console/sync?tutname=' + $('#tutname').text());
 
-    socket = new WebSocket('ws://' + '10.10.105.204:8080' + '/v1/testbuild/');
+    socket = new WebSocket('ws://' + 'localhost:8080' + '/v1/testbuild/');
 
 Messenger.options = {
     parentLocations: ['article'],
