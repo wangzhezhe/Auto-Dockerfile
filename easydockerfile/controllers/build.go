@@ -16,7 +16,7 @@ import (
 	"net/http"
 	"os"
 	"reflect"
-	"strconv"
+	//"strconv"
 	"strings"
 )
 
@@ -159,7 +159,7 @@ func Tartoimage(imagename string, uploadtar string) *http.Response {
 	}
 
 	client := &http.Client{}
-	url := "http://0.0.0.0:2376/build?dockerfile=" + imagename + "/Dockerfile&q=true&t=" + imagename
+	url := "http://10.10.105.204:2376/build?dockerfile=" + imagename + "/Dockerfile&q=true&t=" + imagename
 	body, err := ioutil.ReadFile(imagename + "/deployments.tar.gz")
 	if err != nil {
 		panic(err)
@@ -180,10 +180,9 @@ func Tartoimage(imagename string, uploadtar string) *http.Response {
 
 var count = 0
 
-func Getname() string {
-	count++
-	num := count % 100
-	dirname := "temp_test" + strconv.Itoa(num)
+func Getname(endpoint string) string {
+	url := strings.Split(endpoint, ":")[0]
+	dirname := "temp_test" + "-" + url
 	return dirname
 }
 
@@ -192,7 +191,7 @@ type BuildController struct {
 	beego.Controller
 }
 
-func writeCmdOutput(ws *websocket.Conn, res http.ResponseWriter, pipeReader *io.PipeReader) {
+func writeCmdOutput(ws *websocket.Conn, res http.ResponseWriter, pipeReader *io.PipeReader, dirname string) {
 
 	buffer := make([]byte, 20)
 	for {
@@ -219,9 +218,12 @@ func writeCmdOutput(ws *websocket.Conn, res http.ResponseWriter, pipeReader *io.
 			buffer[i] = 0
 		}
 	}
+	Cleandir(dirname)
 }
 
-var ws *websocket.Conn
+//var ws *websocket.Conn
+
+var wsmap = make(map[string]*websocket.Conn)
 
 // @Title testBuild
 // @Description : start the websocket connection
@@ -230,9 +232,15 @@ var ws *websocket.Conn
 // @Failure 403 body is empty
 // @router / [get]
 func (o *BuildController) Get() {
-
+	endpoint := o.Ctx.Request.RemoteAddr
+	url := strings.Split(endpoint, ":")[0]
 	wsget, err := websocket.Upgrade(o.Ctx.ResponseWriter, o.Ctx.Request, nil, 1024, 1024)
-	ws = wsget
+
+	wsmap[url] = wsget
+	fmt.Println("map:", wsmap)
+	o.Ctx.WriteString("connection ok")
+	//wsa = append(wsa, wsget)
+	//o.SetSession("num", len(wsa)-1)
 	if _, ok := err.(websocket.HandshakeError); ok {
 		http.Error(o.Ctx.ResponseWriter, "Not a websocket handshake", 400)
 		return
@@ -240,6 +248,7 @@ func (o *BuildController) Get() {
 		beego.Error("Cannot setup WebSocket connection:", err)
 		return
 	}
+
 }
 
 // @Title testBuild
@@ -249,8 +258,11 @@ func (o *BuildController) Get() {
 // @Failure 403 body is empty
 // @router / [post]
 func (o *BuildController) Post() {
-	fmt.Println("test post")
-	dirname := Getname()
+	//	num := o.GetSession("num").(interface{}).(int)
+	endpoint := o.Ctx.Request.RemoteAddr
+	fmt.Println("endpoint", endpoint)
+	fmt.Println(wsmap)
+	dirname := Getname(endpoint)
 	err := os.Mkdir(dirname, 0777)
 	if err != nil {
 		panic(err)
@@ -297,8 +309,16 @@ func (o *BuildController) Post() {
 
 	fmt.Println("the output type:", reflect.TypeOf(o.Ctx.Output))
 	//pipeReader = res
-	writeCmdOutput(ws, res, pipeReader)
+	//writeCmdOutput(wsa[num], res, pipeReader)
 
-	defer Cleandir(dirname)
+	url := strings.Split(endpoint, ":")[0]
+	fmt.Println(url)
+	fmt.Println(wsmap)
+	if v, ok := wsmap[url]; ok {
+		fmt.Println(v)
+	}
+	ws := wsmap[url]
+	fmt.Println(ws)
+	writeCmdOutput(ws, res, pipeReader, dirname)
 
 }
